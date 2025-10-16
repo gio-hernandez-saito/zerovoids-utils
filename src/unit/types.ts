@@ -1,13 +1,7 @@
 /**
  * Default Unit Type
  */
-export type BaseUnit =
-	| "area"
-	| "mass"
-	| "volume"
-	| "data"
-	| "count"
-	| "custom";
+export type BaseUnit = "area" | "mass" | "volume" | "data" | "count" | "custom";
 
 /**
  * Represents a mapping of units to their associated metadata.
