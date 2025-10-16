@@ -1,0 +1,53 @@
+# Node modules
+node_modules/
+.pnpm-store/
+
+# Build outputs
+dist/
+build/
+*.tsbuildinfo
+
+# Test coverage
+coverage/
+*.lcov
+.nyc_output/
+
+# Environment variables
+.env
+.env*.local
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+
+# OS
+.DS_Store
+Thumbs.db
+desktop.ini
+
+# Logs
+*.log
+npm-debug.log*
+pnpm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+lerna-debug.log*
+
+# Temporary files
+*.tmp
+*.temp
+.cache/
+
+# Husky
+.husky/_
+
+# TypeScript
+*.tsbuildinfo
+
+# Package manager locks (선택적 - 프로젝트에 따라)
+# pnpm-lock.yaml
+# package-lock.json
+# yarn.lock

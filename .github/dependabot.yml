@@ -1,0 +1,60 @@
+version: 2
+updates:
+  # npm dependencies
+  - package-ecosystem: "npm"
+    directory: "/"
+    schedule:
+      interval: "weekly"
+      day: "monday"
+      time: "09:00"
+      timezone: "Asia/Seoul"
+    open-pull-requests-limit: 10
+    reviewers:
+      - "zerovoids"
+    labels:
+      - "dependencies"
+      - "automated"
+    commit-message:
+      prefix: "chore"
+      prefix-development: "chore"
+      include: "scope"
+    groups:
+      # Development dependencies
+      dev-dependencies:
+        patterns:
+          - "@types/*"
+          - "@biomejs/*"
+          - "@changesets/*"
+          - "@commitlint/*"
+          - "@vitest/*"
+          - "typescript"
+          - "vite*"
+          - "vitest"
+          - "husky"
+          - "lint-staged"
+        update-types:
+          - "minor"
+          - "patch"
+      # Build tools
+      build-tools:
+        patterns:
+          - "vite"
+          - "vite-plugin-*"
+        update-types:
+          - "minor"
+          - "patch"
+
+  # GitHub Actions
+  - package-ecosystem: "github-actions"
+    directory: "/"
+    schedule:
+      interval: "weekly"
+      day: "monday"
+      time: "09:00"
+      timezone: "Asia/Seoul"
+    open-pull-requests-limit: 5
+    labels:
+      - "github-actions"
+      - "automated"
+    commit-message:
+      prefix: "ci"
