@@ -1,5 +1,0 @@
----
-"@zerovoids/utils": minor
----
-
-Release

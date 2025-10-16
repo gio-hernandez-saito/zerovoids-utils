@@ -1,6 +1,6 @@
 {
 	"name": "@zerovoids/utils",
-	"version": "0.0.1",
+	"version": "0.1.0",
 	"description": "Type-safe utility library for number formatting, unit conversion, and precision rounding",
 	"author": "zerovoids",
 	"license": "MIT",
