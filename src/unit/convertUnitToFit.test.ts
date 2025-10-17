@@ -87,7 +87,7 @@ describe("convertUnitToFit", () => {
 				offset: true,
 			});
 
-			// 5000 is < 10000, so it stays as g
+			// 5000 is < 10,000, so it stays as g
 			expect(result).toEqual({
 				number: 5000,
 				unit: "mass",
@@ -284,7 +284,7 @@ describe("convertUnitToFit", () => {
 				from: "kg",
 			});
 
-			// Should convert to g (smallest unit)
+			// Should convert to g (the smallest unit)
 			expect(result.suffix).toBe("g");
 		});
 	});
