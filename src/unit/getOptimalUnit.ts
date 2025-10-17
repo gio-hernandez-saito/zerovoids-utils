@@ -18,7 +18,7 @@ import { BASE_UNIT_MAP } from "./types.js";
  *
  * @example
  * getOptimalUnit({ numbers: [500, 1500, 2500], unit: 'mass', from: 'g' });
- * // 'g' (based on min optimizer, 500 fits best in g scale)
+ * // 'g' (based on min optimizer, 500 fits best in a g scale)
  *
  * getOptimalUnit({
  *   numbers: [5000, 8000, 12000],
