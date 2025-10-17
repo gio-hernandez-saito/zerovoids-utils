@@ -1,4 +1,4 @@
-import { toBankersRound } from "@zerovoids/utils/number";
+import { toBankersRound } from "../number/toBankersRound.js";
 import type { BaseUnit, ConvertedReturn, UnitMap } from "./types.js";
 import { BASE_UNIT_MAP } from "./types.js";
 
