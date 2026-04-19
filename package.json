@@ -4,6 +4,14 @@
 	"description": "Type-safe utility library for number formatting, unit conversion, and precision rounding",
 	"author": "zerovoids",
 	"license": "MIT",
+	"repository": {
+		"type": "git",
+		"url": "git+https://github.com/gio-hernandez-saito/zerovoids-utils.git"
+	},
+	"homepage": "https://github.com/gio-hernandez-saito/zerovoids-utils#readme",
+	"bugs": {
+		"url": "https://github.com/gio-hernandez-saito/zerovoids-utils/issues"
+	},
 	"type": "module",
 	"main": "./dist/index.cjs",
 	"module": "./dist/index.js",
@@ -58,7 +66,8 @@
 		"zero-dependencies"
 	],
 	"publishConfig": {
-		"access": "public"
+		"access": "public",
+		"provenance": true
 	},
 	"devDependencies": {
 		"@biomejs/biome": "2.1.1",
@@ -75,9 +84,9 @@
 	"lint-staged": {
 		"*.{ts,tsx,js,jsx,json}": "biome check --write"
 	},
-	"packageManager": "pnpm@10.17.1",
+	"packageManager": "pnpm@10.33.0",
 	"engines": {
-		"node": ">=20.0.0",
+		"node": ">=22.0.0",
 		"pnpm": ">=10.0.0"
 	}
 }

@@ -102,7 +102,7 @@ describe("getOptimalUnit", () => {
 			expect(result).toBe("kg");
 		});
 
-		it("should choose first when frequencies are tied", () => {
+		it("should prefer smaller unit on tie (deterministic)", () => {
 			const result = getOptimalUnit({
 				numbers: [500, 5000],
 				unit: "mass",
@@ -110,9 +110,19 @@ describe("getOptimalUnit", () => {
 				optimizer: "freq",
 			});
 
-			// 500 g (1x), 5000 g = 5 kg (1x)
-			// Tied, should return first encountered
-			expect(["g", "kg"]).toContain(result);
+			// 500 g (1x), 5000 g = 5 kg (1x) — tie broken toward smaller (g).
+			expect(result).toBe("g");
+		});
+
+		it("tie-break ordering is stable across categories", () => {
+			// data: 500 B → B (1x), 5000 B → 5 KB (1x), 5_000_000 B → 5 MB (1x)
+			const result = getOptimalUnit({
+				numbers: [500, 5000, 5_000_000],
+				unit: "data",
+				from: "B",
+				optimizer: "freq",
+			});
+			expect(result).toBe("B");
 		});
 	});
 
@@ -145,7 +155,7 @@ describe("getOptimalUnit", () => {
 				numbers: [5000],
 				unit: "mass",
 				from: "g",
-				offset: true,
+				offset: 1,
 			});
 
 			// With offset, a threshold is 10^4 instead of 10^3
@@ -158,7 +168,7 @@ describe("getOptimalUnit", () => {
 				numbers: [15000],
 				unit: "mass",
 				from: "g",
-				offset: true,
+				offset: 1,
 			});
 
 			// 15,000 >= 10,000, converts to kg
@@ -304,6 +314,55 @@ describe("getOptimalUnit", () => {
 					optimizer: "invalid" as any,
 				}),
 			).toThrow("Unknown optimizer: invalid");
+		});
+	});
+
+	describe("threshold / precision passthrough", () => {
+		it("threshold delays promotion across the set", () => {
+			const result = getOptimalUnit({
+				numbers: [4500, 8200, 12000],
+				unit: "mass",
+				from: "g",
+				threshold: 10000,
+			});
+			expect(result).toBe("g");
+		});
+
+		it("offset (number) delays promotion", () => {
+			const result = getOptimalUnit({
+				numbers: [4500, 8200, 12000],
+				unit: "data",
+				from: "B",
+				offset: 1,
+			});
+			// threshold = 10^(3+1) = 10000; min=4500 stays as B
+			expect(result).toBe("B");
+		});
+
+		it("precision is forwarded without affecting suffix selection", () => {
+			// Values stay under promotion threshold (1000) → all g
+			expect(
+				getOptimalUnit({
+					numbers: [500, 750],
+					unit: "mass",
+					from: "g",
+					precision: 6,
+				}),
+			).toBe("g");
+		});
+	});
+
+	describe("roundMethod passthrough", () => {
+		it("is forwarded to convertUnitToFit without affecting suffix pick", () => {
+			// Just checks the call accepts the option without error.
+			expect(
+				getOptimalUnit({
+					numbers: [500, 750],
+					unit: "mass",
+					from: "g",
+					roundMethod: "halfAwayFromZero",
+				}),
+			).toBe("g");
 		});
 	});
 

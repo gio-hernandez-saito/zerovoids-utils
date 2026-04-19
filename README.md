@@ -41,6 +41,21 @@ yarn add @zerovoids/utils
 
 ---
 
+## 🆙 Migrating to v2
+
+- `toBankersRound` → **`bankersRound`**
+- `roundHalfAwayFromZero` → **`halfAwayFromZero`**
+- `bankersRound` no longer auto-promotes precision for `|value| < 1`.
+  The caller's `precision` is always respected as-is. If you need the old
+  adaptive behavior, use `formatNumber(v, { mode: "adaptive", roundMethod: "bankersRound" })`.
+- `BaseUnit` no longer contains the `"custom"` slot — define your own via
+  `UnitMap<"your-category">` when you need identity behavior.
+- The package root now re-exports flatly, so `import { formatNumber } from "@zerovoids/utils"`
+  works directly (no more `number.formatNumber(...)` namespace).
+- `getSignificantDigitIndex` is no longer part of the public API.
+
+---
+
 ## 📚 Modules
 
 ### 📊 Number Utils
@@ -48,7 +63,7 @@ yarn add @zerovoids/utils
 Advanced number formatting and precision rounding utilities.
 
 ```typescript
-import { formatNumber, toBankersRound, roundHalfAwayFromZero } from '@zerovoids/utils/number';
+import { formatNumber, bankersRound, halfAwayFromZero } from '@zerovoids/utils/number';
 
 // Adaptive formatting - perfect for charts and visualizations
 formatNumber(0.0000345, { mode: 'adaptive', decimals: 2 });
@@ -58,29 +73,45 @@ formatNumber(1234.5678, { mode: 'adaptive', decimals: 2 });
 // → "1,234.57"
 
 // Fixed decimal places with custom affixes
-formatNumber(1234567.89, { 
+formatNumber(1234567.89, {
   mode: 'fixed',
   decimals: 2,
   prefix: { text: '$', space: false },
-  suffix: { text: 'USD', space: true }
+  suffix: { text: 'USD', space: true },
 });
 // → "$1,234,567.89 USD"
 
+// Native compact notation
+formatNumber(1_234_000, { mode: 'compact' });
+// → "1.23M"
+
+// Negative sign before the prefix
+formatNumber(-1234.5, {
+  decimals: 2,
+  prefix: '$',
+  signPosition: 'before-prefix',
+});
+// → "-$1,234.50"
+
+// Safe handling of NaN / ±Infinity
+formatNumber(Number.NaN, { nonFinite: '-' });
+// → "-"
+
 // Banker's rounding (IEEE 754) - reduces cumulative rounding bias
-toBankersRound(2.5, { precision: 0 }); // → 2 (rounds to even)
-toBankersRound(3.5, { precision: 0 }); // → 4 (rounds to even)
+bankersRound(2.5, { precision: 0 }); // → 2 (rounds to even)
+bankersRound(3.5, { precision: 0 }); // → 4 (rounds to even)
 
 // Commercial rounding (round half away from zero)
-roundHalfAwayFromZero(2.5, { precision: 0 });  // → 3
-roundHalfAwayFromZero(-2.5, { precision: 0 }); // → -3
+halfAwayFromZero(2.5, { precision: 0 });  // → 3
+halfAwayFromZero(-2.5, { precision: 0 }); // → -3
 ```
 
 **Features:**
-- Multiple formatting modes: `adaptive`, `fixed`, `auto`, `raw`
+- Multiple formatting modes: `adaptive`, `fixed`, `auto`, `raw`, `compact`
 - Precision rounding methods: banker's round, commercial round
-- Customizable prefixes and suffixes with spacing control
+- Customizable prefixes and suffixes with spacing + sign placement control
 - Locale-aware number formatting
-- Handles edge cases and tiny/large numbers
+- Graceful `NaN` / `±Infinity` fallback via `nonFinite`
 
 ---
 
@@ -89,80 +120,69 @@ roundHalfAwayFromZero(-2.5, { precision: 0 }); // → -3
 Flexible unit conversion utilities optimized for data visualization and dashboards.
 
 ```typescript
-import { 
-  convertUnitFromTo, 
-  convertUnitToFit, 
-  getOptimalUnit 
+import {
+  convertUnitFromTo,
+  convertUnitToFit,
+  getOptimalUnit,
 } from '@zerovoids/utils/unit';
 
 // Direct unit conversion
-convertUnitFromTo({ 
-  number: 5000, 
-  unit: 'mass', 
-  from: 'g', 
-  to: 'kg' 
+convertUnitFromTo({
+  number: 5000,
+  unit: 'mass',
+  from: 'g',
+  to: 'kg',
 });
 // → { number: 5, unit: 'mass', suffix: 'kg' }
 
 // Auto-fit to most appropriate unit
-convertUnitToFit({ 
-  number: 500, 
-  unit: 'mass', 
-  from: 'g' 
+convertUnitToFit({
+  number: 500,
+  unit: 'mass',
+  from: 'g',
 });
 // → { number: 500, unit: 'mass', suffix: 'g' }
 
-convertUnitToFit({ 
-  number: 5000, 
-  unit: 'mass', 
-  from: 'g' 
+convertUnitToFit({
+  number: 5000,
+  unit: 'mass',
+  from: 'g',
 });
 // → { number: 5, unit: 'mass', suffix: 'kg' }
 
-// Find optimal unit for multiple values (perfect for charts)
-getOptimalUnit({ 
-  numbers: [500, 1500, 2500], 
-  unit: 'mass', 
-  from: 'g' 
-});
-// → 'g' (keeps all values in same scale)
+// `saturated` flags when the scan hit the end of the suffix list
+convertUnitToFit({ number: 9e15, unit: 'mass', from: 'g' });
+// → { number: 9e6, unit: 'mass', suffix: 'ton', saturated: 'max' }
 
-getOptimalUnit({ 
-  numbers: [5000, 15000, 25000], 
-  unit: 'mass', 
-  from: 'g' 
-});
-// → 'kg' (converts for better readability)
+// Find optimal unit for multiple values (perfect for charts)
+getOptimalUnit({ numbers: [500, 1500, 2500], unit: 'mass', from: 'g' });
+// → 'g'
+
+getOptimalUnit({ numbers: [5000, 15000, 25000], unit: 'mass', from: 'g' });
+// → 'kg'
 ```
 
 **Built-in Units:**
-- **Mass**: g, kg, ton (gap: 3 → 1000x between units)
-- **Area**: cm², m², km² (gap: 6 → 1,000,000x between units)
-- **Volume**: mL, L, kL (gap: 3 → 1000x between units)
-- **Data**: B, KB, MB, GB, TB, PB (gap: 3 → 1000x between units)
-- **Count**: "", K, M, B, T (gap: 3 → 1000x between units, for large numbers like 5K, 2.5M)
+- **Mass**: g, kg, ton (gap: 3 → 1000× between units)
+- **Area**: cm², m², km² (gap: 6 → 1,000,000× between units)
+- **Volume**: mL, L, kL (gap: 3 → 1000× between units)
+- **Data**: B, KB, MB, GB, TB, PB (gap: 3 → 1000× between units)
+- **Count**: "", K, M, B, T (gap: 3 → 1000× between units, for large numbers like 5K, 2.5M)
 
 **Custom Units:**
 ```typescript
-// Define your own units with custom gap
-const customUnitMap = {
-  energy: { 
-    gap: 3, 
-    suffices: ['Wh', 'kWh', 'MWh', 'GWh'], 
-    baseIndex: 1 
-  },
-  temperature: { 
-    gap: 3, 
-    suffices: ['mK', 'K', 'kK'], 
-    baseIndex: 1 
-  }
+import { convertUnitToFit, type UnitMap } from '@zerovoids/utils/unit';
+
+const energyMap: UnitMap<'energy' | 'temperature'> = {
+  energy: { gap: 3, suffices: ['Wh', 'kWh', 'MWh', 'GWh'], baseIndex: 1 },
+  temperature: { gap: 3, suffices: ['mK', 'K', 'kK'], baseIndex: 1 },
 };
 
-convertUnitToFit({ 
-  number: 5000, 
-  unit: 'energy', 
+convertUnitToFit({
+  number: 5000,
+  unit: 'energy',
   from: 'Wh',
-  unitMap: customUnitMap
+  unitMap: energyMap,
 });
 // → { number: 5, unit: 'energy', suffix: 'kWh' }
 ```
@@ -171,7 +191,7 @@ convertUnitToFit({
 - Smart auto-conversion to optimal units
 - Consistent unit selection for chart datasets
 - Fully customizable unit mappings
-- Precision handling with banker's rounding
+- Precision handling with pluggable `roundMethod`
 - Support for various optimization strategies (min, max, freq)
 
 ---
@@ -183,10 +203,10 @@ Unlike general-purpose libraries (lodash, ramda), `@zerovoids/utils` provides **
 | Problem | Solution |
 |---------|----------|
 | Chart numbers with varying magnitudes | `formatNumber` with `adaptive` mode |
-| Financial calculations with rounding bias | `toBankersRound` (IEEE 754) |
+| Financial calculations with rounding bias | `bankersRound` (IEEE 754) |
 | Dashboard unit consistency | Smart unit conversion with `getOptimalUnit` |
 | File size formatting | Built-in data units (B, KB, MB, GB, etc.) |
-| Large number abbreviations | Count units (K, M, B, T) |
+| Large number abbreviations | `compact` mode or `count` units (K, M, B, T) |
 
 ---
 
@@ -199,8 +219,8 @@ import { formatNumber } from '@zerovoids/utils/number';
 
 const chartData = [0.00012, 1.5, 1234.567, 999999];
 
-const formatted = chartData.map(value => 
-  formatNumber(value, { mode: 'adaptive', decimals: 2 })
+const formatted = chartData.map((value) =>
+  formatNumber(value, { mode: 'adaptive', decimals: 2 }),
 );
 // → ["0.00012", "1.5", "1,234.57", "999,999"]
 ```
@@ -208,33 +228,37 @@ const formatted = chartData.map(value =>
 ### Weight Dashboard
 
 ```typescript
-import { convertUnitToFit, getOptimalUnit } from '@zerovoids/utils/unit';
+import {
+  convertUnitFromTo,
+  convertUnitToFit,
+  getOptimalUnit,
+} from '@zerovoids/utils/unit';
 
 // Auto-convert individual values
-const weight = convertUnitToFit({ 
-  number: 5420, 
-  unit: 'mass', 
-  from: 'g' 
+const weight = convertUnitToFit({
+  number: 5420,
+  unit: 'mass',
+  from: 'g',
 });
 // → { number: 5.42, unit: 'mass', suffix: 'kg' }
 
 // Find optimal unit for chart axis
 const chartValues = [4500, 8200, 12000, 15800];
-const optimalUnit = getOptimalUnit({ 
-  numbers: chartValues, 
-  unit: 'mass', 
-  from: 'g' 
+const optimalUnit = getOptimalUnit({
+  numbers: chartValues,
+  unit: 'mass',
+  from: 'g',
 });
 // → 'kg'
 
 // Convert all values to optimal unit
-const chartData = chartValues.map(value => 
-  convertUnitFromTo({ 
-    number: value, 
-    unit: 'mass', 
-    from: 'g', 
-    to: optimalUnit 
-  })
+const chartData = chartValues.map((value) =>
+  convertUnitFromTo({
+    number: value,
+    unit: 'mass',
+    from: 'g',
+    to: optimalUnit,
+  }),
 );
 // → All values converted to kg for consistent display
 ```
@@ -246,8 +270,8 @@ import { convertUnitToFit } from '@zerovoids/utils/unit';
 
 const fileSizes = [1024, 1048576, 1073741824];
 
-const formatted = fileSizes.map(bytes => 
-  convertUnitToFit({ number: bytes, unit: 'data', from: 'B' })
+const formatted = fileSizes.map((bytes) =>
+  convertUnitToFit({ number: bytes, unit: 'data', from: 'B' }),
 );
 // → [
 //   { number: 1.024, unit: 'data', suffix: 'KB' },
@@ -259,22 +283,9 @@ const formatted = fileSizes.map(bytes =>
 ### Large Number Abbreviation
 
 ```typescript
-import { convertUnitToFit, formatNumber } from '@zerovoids/utils/unit';
+import { formatNumber } from '@zerovoids/utils/number';
 
-const followers = 2547893;
-
-const converted = convertUnitToFit({ 
-  number: followers, 
-  unit: 'count', 
-  from: '' 
-});
-// → { number: 2.548, unit: 'count', suffix: 'M' }
-
-const formatted = formatNumber(converted.number, { 
-  mode: 'fixed', 
-  decimals: 1,
-  suffix: { text: converted.suffix, space: false }
-});
+formatNumber(2_547_893, { mode: 'compact', decimals: 1 });
 // → "2.5M"
 ```
 

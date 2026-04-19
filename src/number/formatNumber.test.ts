@@ -213,6 +213,130 @@ describe("formatNumber", () => {
 		});
 	});
 
+	describe("mode: compact", () => {
+		it("abbreviates thousands with an M/K suffix", () => {
+			expect(formatNumber(1_234_000, { mode: "compact" })).toBe("1.23M");
+			expect(formatNumber(1_500, { mode: "compact", decimals: 1 })).toBe(
+				"1.5K",
+			);
+		});
+
+		it("respects decimals as the maxFractionDigits", () => {
+			expect(formatNumber(1_234_000, { mode: "compact", decimals: 0 })).toBe(
+				"1M",
+			);
+		});
+
+		it("handles negatives inline (auto sign)", () => {
+			expect(formatNumber(-1_234_000, { mode: "compact" })).toBe("-1.23M");
+		});
+
+		it("respects signPosition + prefix", () => {
+			expect(
+				formatNumber(-1_234_000, {
+					mode: "compact",
+					prefix: "$",
+					signPosition: "before-prefix",
+				}),
+			).toBe("-$1.23M");
+		});
+	});
+
+	describe("signPosition", () => {
+		it("defaults to 'auto' (prefix before sign)", () => {
+			expect(formatNumber(-1234.5, { decimals: 2, prefix: "$" })).toBe(
+				"$-1,234.50",
+			);
+		});
+
+		it("'before-prefix' lifts the minus before the prefix", () => {
+			expect(
+				formatNumber(-1234.5, {
+					decimals: 2,
+					prefix: "$",
+					signPosition: "before-prefix",
+				}),
+			).toBe("-$1,234.50");
+		});
+
+		it("'before-prefix' is a no-op on positive values", () => {
+			expect(
+				formatNumber(1234.5, {
+					decimals: 2,
+					prefix: "$",
+					signPosition: "before-prefix",
+				}),
+			).toBe("$1,234.50");
+		});
+
+		it("combines with prefix space", () => {
+			expect(
+				formatNumber(-1234.5, {
+					decimals: 2,
+					prefix: { text: "$", space: true },
+					signPosition: "before-prefix",
+				}),
+			).toBe("-$ 1,234.50");
+		});
+	});
+
+	describe("nonFinite fallback", () => {
+		it("returns the literal string for NaN when supplied", () => {
+			expect(formatNumber(Number.NaN, { nonFinite: "-" })).toBe("-");
+		});
+
+		it("returns the literal string for ±Infinity", () => {
+			expect(formatNumber(Number.POSITIVE_INFINITY, { nonFinite: "∞" })).toBe(
+				"∞",
+			);
+			expect(formatNumber(Number.NEGATIVE_INFINITY, { nonFinite: "∞" })).toBe(
+				"∞",
+			);
+		});
+
+		it("accepts a function fallback receiving the raw value", () => {
+			expect(
+				formatNumber(Number.NEGATIVE_INFINITY, {
+					nonFinite: (v) => (v < 0 ? "-∞" : "+∞"),
+				}),
+			).toBe("-∞");
+		});
+
+		it("does not apply prefix/suffix to the fallback", () => {
+			expect(
+				formatNumber(Number.NaN, { nonFinite: "-", prefix: "$", suffix: "kg" }),
+			).toBe("-");
+		});
+
+		it("falls back to locale rendering when no nonFinite is given", () => {
+			const out = formatNumber(Number.NaN);
+			expect(typeof out).toBe("string");
+			expect(out.toLowerCase()).toContain("nan");
+		});
+	});
+
+	describe("adaptive × bankersRound (no longer double-promoted)", () => {
+		it("respects formatNumber-level effective decimals without doubled promotion", () => {
+			expect(
+				formatNumber(0.0000345, {
+					mode: "adaptive",
+					decimals: 2,
+					roundMethod: "bankersRound",
+				}),
+			).toBe("0.00003");
+		});
+
+		it("fixed + bankersRound small number uses caller precision as-is", () => {
+			expect(
+				formatNumber(0.00125, {
+					mode: "fixed",
+					decimals: 1,
+					roundMethod: "bankersRound",
+				}),
+			).toBe("0.0");
+		});
+	});
+
 	describe("real-world use cases", () => {
 		it("should format chart axis labels (adaptive mode)", () => {
 			const values = [0.0000345, 0.5, 1000, 123456.789];

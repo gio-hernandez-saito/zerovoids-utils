@@ -1,147 +1,123 @@
-import { getSignificantDigitIndex } from "./getSignificantDigitIndex.js";
-import { roundHalfAwayFromZero } from "./roundHalfAwayFromZero.js";
-import { toBankersRound } from "./toBankersRound.js";
+import {
+	bankersRound,
+	getSignificantDigitIndex,
+	halfAwayFromZero,
+} from "./round.js";
 
 /**
- * Number formatting mode
+ * Number formatting mode.
  *
- * - `adaptive`: Uses significant digits for small numbers (< 1), fixed decimals otherwise
- * - `fixed`: Always uses the specified decimal places, even for integers
- * - `auto`: Removes decimal places for integers, uses specified decimals otherwise
- * - `raw`: No rounding, shows the number as-is with locale formatting
+ * - `adaptive`: Uses significant digits for small numbers (< 1), fixed decimals otherwise.
+ * - `fixed`: Always uses the specified decimal places, even for integers.
+ * - `auto`: Removes decimal places for integers, uses specified decimals otherwise.
+ * - `raw`: No rounding, shows the number as-is with locale formatting.
+ * - `compact`: Native locale compact notation (`1.2K`, `1M`, …) via
+ *   `Intl.NumberFormat({ notation: "compact" })`. Rounding is delegated to the
+ *   runtime and `roundMethod` is ignored.
  */
-export type FormatMode = "adaptive" | "fixed" | "auto" | "raw";
+export type FormatMode = "adaptive" | "fixed" | "auto" | "raw" | "compact";
 
 /**
- * Rounding method
+ * Rounding method.
  *
- * - `halfAwayFromZero`: Round half away from zero (standard commercial rounding)
- * - `bankersRound`: Round half to even (IEEE 754 standard, reduces cumulative bias)
+ * - `halfAwayFromZero`: Round half away from zero (commercial rounding).
+ * - `bankersRound`: Round half to even (IEEE 754).
  */
 export type RoundMethod = "halfAwayFromZero" | "bankersRound";
 
 /**
- * Affix configuration with optional spacing
+ * Placement of the minus sign for negative values.
+ *
+ * - `auto` (default): prefix is emitted as-is, so a negative number renders
+ *   like `$-1,234.50`. Matches the raw output of `Number.toLocaleString`.
+ * - `before-prefix`: sign is lifted before the prefix, producing `-$1,234.50`.
+ */
+export type SignPosition = "auto" | "before-prefix";
+
+/**
+ * Affix configuration with optional spacing.
  */
 export interface AffixConfig {
-	/** The text to add as a prefix or suffix */
+	/** The text to add as a prefix or suffix. */
 	text: string;
-	/** Whether to add a space between the number and the affix (default: false) */
+	/** Add a space between the number and the affix. Default `false`. */
 	space?: boolean;
 }
 
 /**
- * Options for number formatting
+ * Options for {@link formatNumber}.
  */
 export interface FormatNumberOptions {
-	/**
-	 * Formatting mode
-	 * @default 'auto'
-	 */
+	/** @default 'auto' */
 	mode?: FormatMode;
-
-	/**
-	 * Number of decimal places
-	 * @default 2
-	 */
+	/** @default 2 */
 	decimals?: number;
-
-	/**
-	 * Rounding method to use
-	 * @default 'halfAwayFromZero'
-	 */
+	/** @default 'halfAwayFromZero' — ignored when `mode` is `compact` or `raw`. */
 	roundMethod?: RoundMethod;
-
-	/**
-	 * Prefix configuration
-	 */
 	prefix?: string | AffixConfig;
-
-	/**
-	 * Suffix configuration
-	 */
 	suffix?: string | AffixConfig;
+	/** @default 'auto' */
+	signPosition?: SignPosition;
+	/**
+	 * Fallback for non-finite inputs (`NaN`, `±Infinity`). When provided, the
+	 * value is returned verbatim — affixes are **not** appended. When omitted,
+	 * the runtime's locale string for the non-finite value is emitted (e.g. `"NaN"`).
+	 */
+	nonFinite?: string | ((value: number) => string);
+}
+
+interface ResolvedAffix {
+	text: string;
+	space: boolean;
+}
+
+function resolveAffix(affix: string | AffixConfig | undefined): ResolvedAffix {
+	if (affix === undefined) return { text: "", space: false };
+	if (typeof affix === "string") return { text: affix, space: false };
+	return { text: affix.text, space: affix.space ?? false };
+}
+
+function assemble(
+	sign: string,
+	body: string,
+	prefix: ResolvedAffix,
+	suffix: ResolvedAffix,
+	signPosition: SignPosition,
+): string {
+	const prefixChunk = `${prefix.text}${prefix.space ? " " : ""}`;
+	const suffixChunk = `${suffix.space ? " " : ""}${suffix.text}`;
+	if (signPosition === "before-prefix") {
+		return `${sign}${prefixChunk}${body}${suffixChunk}`;
+	}
+	return `${prefixChunk}${sign}${body}${suffixChunk}`;
+}
+
+function localeFixed(value: number, decimals: number): string {
+	return value.toLocaleString(undefined, {
+		minimumFractionDigits: decimals,
+		maximumFractionDigits: decimals,
+	});
 }
 
 /**
- * Formats a number with flexible options for rounding, decimal places, and affixes.
+ * Formats a number with flexible options for rounding, decimals, and affixes.
  *
- * This function provides comprehensive number formatting with multiple modes:
- * - **adaptive**: Automatically adjusts precision for very small numbers
- * - **fixed**: Always shows specified decimal places
- * - **auto**: Shows decimals only when needed (removes for integers)
- * - **raw**: No rounding, shows number as-is
- *
- * @param value - The number to format
- * @param options - Formatting options
- * @returns Formatted number string with a thousand separators and optional affixes
+ * @param value - The number to format.
+ * @param options - Formatting options.
+ * @returns Formatted number string with thousand separators and optional affixes.
  *
  * @example
- * ```TypeScript
- * // Mode: adaptive (good for charts with varying magnitudes)
- * formatNumber(0.0000345, { mode: 'adaptive', decimals: 2 });
- * // → "0.00003" (uses significant digits)
+ * formatNumber(0.0000345, { mode: "adaptive", decimals: 2 });
+ * // "0.00003"
  *
- * formatNumber(1234.567, { mode: 'adaptive', decimals: 2 });
- * // → "1,234.57" (uses specified decimals)
+ * formatNumber(1234.5, { mode: "fixed", decimals: 2, prefix: "$" });
+ * // "$1,234.50"
  *
- * // Mode: fixed (good for financial data)
- * formatNumber(1234, { mode: 'fixed', decimals: 2 });
- * // → "1,234.00" (always 2 decimals)
+ * formatNumber(-1234.5, { mode: "fixed", decimals: 2, prefix: "$", signPosition: "before-prefix" });
+ * // "-$1,234.50"
  *
- * formatNumber(1234.5, { mode: 'fixed', decimals: 2 });
- * // → "1,234.50"
- *
- * // Mode: auto (default, most intuitive)
- * formatNumber(1000, { mode: 'auto', decimals: 2 });
- * // → "1,000" (integer, no decimals)
- *
- * formatNumber(1234.5, { mode: 'auto', decimals: 2 });
- * // → "1,234.50" (has decimals)
- *
- * // Mode: raw (no rounding)
- * formatNumber(1234.56789, { mode: 'raw' });
- * // → "1,234.56789" (as-is)
- *
- * // Rounding methods
- * formatNumber(2.5, { mode: 'fixed', decimals: 0, roundMethod: 'halfAwayFromZero' });
- * // → "3"
- *
- * formatNumber(2.5, { mode: 'fixed', decimals: 0, roundMethod: 'bankersRound' });
- * // → "2" (rounds to even)
- *
- * // Prefix and suffix (string shorthand)
- * formatNumber(1234.5, { mode: 'auto', decimals: 2, prefix: '$' });
- * // → "$1,234.50"
- *
- * formatNumber(1234.5, { mode: 'auto', decimals: 2, suffix: 'kg' });
- * // → "1,234.50kg"
- *
- * // Prefix and suffix with spacing
- * formatNumber(1234.5, {
- *   mode: 'auto',
- *   decimals: 2,
- *   prefix: { text: '$', space: true }
- * });
- * // → "$ 1,234.50"
- *
- * formatNumber(1234.5, {
- *   mode: 'auto',
- *   decimals: 2,
- *   suffix: { text: 'kg', space: true }
- * });
- * // → "1,234.50 kg"
- *
- * // Combined example
- * formatNumber(0.0000567, {
- *   mode: 'adaptive',
- *   decimals: 2,
- *   roundMethod: 'bankersRound',
- *   prefix: { text: '~', space: false },
- *   suffix: { text: 'g', space: true }
- * });
- * // → "~0.00006 g"
- * ```
+ * formatNumber(1_234_000, { mode: "compact" });
+ * // "1.2M"
  */
 export function formatNumber(
 	value: number,
@@ -153,66 +129,56 @@ export function formatNumber(
 		roundMethod = "halfAwayFromZero",
 		prefix,
 		suffix,
+		signPosition = "auto",
+		nonFinite,
 	} = options;
 
-	// Parse prefix/suffix
-	const prefixText = typeof prefix === "string" ? prefix : (prefix?.text ?? "");
-	const prefixSpace =
-		typeof prefix === "string" ? false : (prefix?.space ?? false);
+	if (!Number.isFinite(value)) {
+		if (nonFinite !== undefined) {
+			return typeof nonFinite === "function" ? nonFinite(value) : nonFinite;
+		}
+		// Default: let the locale renderer describe the non-finite value.
+		return value.toLocaleString();
+	}
 
-	const suffixText = typeof suffix === "string" ? suffix : (suffix?.text ?? "");
-	const suffixSpace =
-		typeof suffix === "string" ? false : (suffix?.space ?? false);
+	const resolvedPrefix = resolveAffix(prefix);
+	const resolvedSuffix = resolveAffix(suffix);
 
-	// Handle raw mode
+	// `signPosition: "before-prefix"` needs the body without its minus sign.
+	const shouldLiftSign = signPosition === "before-prefix" && value < 0;
+	const sign = shouldLiftSign ? "-" : "";
+	const workingValue = shouldLiftSign ? -value : value;
+
+	if (mode === "compact") {
+		const body = workingValue.toLocaleString(undefined, {
+			notation: "compact",
+			compactDisplay: "short",
+			maximumFractionDigits: decimals,
+		});
+		return assemble(sign, body, resolvedPrefix, resolvedSuffix, signPosition);
+	}
+
 	if (mode === "raw") {
-		// Use maximumFractionDigits: 20 to show all decimal places without rounding
-		const formatted = value.toLocaleString(undefined, {
+		const body = workingValue.toLocaleString(undefined, {
 			minimumFractionDigits: 0,
 			maximumFractionDigits: 20,
 		});
-		return `${prefixText}${prefixSpace ? " " : ""}${formatted}${suffixSpace ? " " : ""}${suffixText}`;
+		return assemble(sign, body, resolvedPrefix, resolvedSuffix, signPosition);
 	}
 
-	// Determine effective precision based on mode
-	let effectiveDecimals = decimals;
+	const effectiveDecimals =
+		mode === "adaptive" && workingValue !== 0 && Math.abs(workingValue) < 1
+			? Math.max(getSignificantDigitIndex(Math.abs(workingValue)), decimals)
+			: decimals;
 
-	if (mode === "adaptive" && Math.abs(value) < 1 && value !== 0) {
-		const significantIndex = getSignificantDigitIndex(Math.abs(value));
-		effectiveDecimals = Math.max(significantIndex, decimals);
-	}
-
-	// Round the value
 	const rounder =
-		roundMethod === "bankersRound" ? toBankersRound : roundHalfAwayFromZero;
-	const rounded = rounder(value, { precision: effectiveDecimals });
+		roundMethod === "bankersRound" ? bankersRound : halfAwayFromZero;
+	const rounded = rounder(workingValue, { precision: effectiveDecimals });
 
-	// Format based on mode
-	let formatted: string;
-
-	if (mode === "fixed") {
-		// Always show decimals
-		formatted = rounded.toLocaleString(undefined, {
-			minimumFractionDigits: effectiveDecimals,
-			maximumFractionDigits: effectiveDecimals,
-		});
-	} else if (mode === "auto") {
-		// Show decimals only if not an integer
-		const isInteger = Number.isInteger(rounded);
-		formatted = isInteger
+	const body =
+		mode === "auto" && Number.isInteger(rounded)
 			? rounded.toLocaleString()
-			: rounded.toLocaleString(undefined, {
-					minimumFractionDigits: effectiveDecimals,
-					maximumFractionDigits: effectiveDecimals,
-				});
-	} else {
-		// adaptive mode: show with effective decimals
-		formatted = rounded.toLocaleString(undefined, {
-			minimumFractionDigits: effectiveDecimals,
-			maximumFractionDigits: effectiveDecimals,
-		});
-	}
+			: localeFixed(rounded, effectiveDecimals);
 
-	// Combine with affixes
-	return `${prefixText}${prefixSpace ? " " : ""}${formatted}${suffixSpace ? " " : ""}${suffixText}`;
+	return assemble(sign, body, resolvedPrefix, resolvedSuffix, signPosition);
 }

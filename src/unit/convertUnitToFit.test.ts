@@ -84,7 +84,7 @@ describe("convertUnitToFit", () => {
 				number: 5000,
 				unit: "mass",
 				from: "g",
-				offset: true,
+				offset: 1,
 			});
 
 			// 5000 is < 10,000, so it stays as g
@@ -100,7 +100,7 @@ describe("convertUnitToFit", () => {
 				number: 15000,
 				unit: "mass",
 				from: "g",
-				offset: true,
+				offset: 1,
 			});
 
 			// 15,000 is >= 10,000, so it converts to kg
@@ -341,31 +341,43 @@ describe("convertUnitToFit", () => {
 	});
 
 	describe("zero", () => {
-		it("should handle zero values", () => {
+		it("should preserve from unit for zero values", () => {
 			const result = convertUnitToFit({
 				number: 0,
 				unit: "mass",
 				from: "kg",
 			});
 
-			// Zero stays in the smallest available unit
+			// Zero is unitless — keep the caller's chosen unit.
 			expect(result).toEqual({
 				number: 0,
 				unit: "mass",
-				suffix: "g",
+				suffix: "kg",
 			});
 		});
 	});
 
 	describe("banker's rounding", () => {
-		it("should apply banker's rounding to results", () => {
+		it("should apply banker's rounding to results (default precision=3)", () => {
 			const result = convertUnitToFit({
 				number: 1002.5,
 				unit: "mass",
 				from: "g",
 			});
 
-			// 1002.5 / 1000 = 1.0025 → rounds to 1
+			// 1002.5 / 1000 = 1.0025 → bankersRound at precision 3 → 1.002 (even)
+			expect(result.number).toBe(1.002);
+			expect(result.suffix).toBe("kg");
+		});
+
+		it("rounds to integer when precision: 0", () => {
+			const result = convertUnitToFit({
+				number: 1002.5,
+				unit: "mass",
+				from: "g",
+				precision: 0,
+			});
+
 			expect(result.number).toBe(1);
 			expect(result.suffix).toBe("kg");
 		});
@@ -390,6 +402,156 @@ describe("convertUnitToFit", () => {
 					from: "invalid",
 				}),
 			).toThrow("Invalid from suffix: invalid");
+		});
+	});
+
+	describe("offset (multi-step)", () => {
+		it("offset=2 delays promotion by two digits", () => {
+			expect(
+				convertUnitToFit({
+					number: 99999,
+					unit: "mass",
+					from: "g",
+					offset: 2,
+				}),
+			).toEqual({ number: 99999, unit: "mass", suffix: "g" });
+		});
+
+		it("offset=2 promotes once threshold crossed", () => {
+			expect(
+				convertUnitToFit({
+					number: 100000,
+					unit: "mass",
+					from: "g",
+					offset: 2,
+				}),
+			).toEqual({ number: 100, unit: "mass", suffix: "kg" });
+		});
+	});
+
+	describe("threshold (explicit)", () => {
+		it("threshold supersedes offset", () => {
+			expect(
+				convertUnitToFit({
+					number: 4000,
+					unit: "mass",
+					from: "g",
+					offset: 999,
+					threshold: 5000,
+				}),
+			).toEqual({ number: 4000, unit: "mass", suffix: "g" });
+		});
+
+		it("custom threshold triggers promotion", () => {
+			expect(
+				convertUnitToFit({
+					number: 6000,
+					unit: "mass",
+					from: "g",
+					threshold: 5000,
+				}),
+			).toEqual({ number: 6, unit: "mass", suffix: "kg" });
+		});
+	});
+
+	describe("precision option", () => {
+		it("default precision=3 preserves fractional detail", () => {
+			expect(
+				convertUnitToFit({ number: 1048576, unit: "data", from: "B" }),
+			).toEqual({ number: 1.049, unit: "data", suffix: "MB" });
+		});
+
+		it("precision=1 collapses fractional detail", () => {
+			expect(
+				convertUnitToFit({
+					number: 1048576,
+					unit: "data",
+					from: "B",
+					precision: 1,
+				}),
+			).toEqual({ number: 1, unit: "data", suffix: "MB" });
+		});
+
+		it("precision=6 preserves full detail", () => {
+			expect(
+				convertUnitToFit({
+					number: 1048576,
+					unit: "data",
+					from: "B",
+					precision: 6,
+				}),
+			).toEqual({ number: 1.048576, unit: "data", suffix: "MB" });
+		});
+	});
+
+	describe("saturated hint", () => {
+		it("sets saturated: 'max' when value exceeds the largest suffix", () => {
+			const result = convertUnitToFit({
+				number: 9e15,
+				unit: "mass",
+				from: "g",
+			});
+			expect(result.suffix).toBe("ton");
+			expect(result.saturated).toBe("max");
+		});
+
+		it("sets saturated: 'min' when value stays below 1 even at smallest suffix", () => {
+			const result = convertUnitToFit({
+				number: 1e-9,
+				unit: "mass",
+				from: "kg",
+			});
+			expect(result.suffix).toBe("g");
+			expect(result.saturated).toBe("min");
+		});
+
+		it("does not set saturated when the value lands in range naturally", () => {
+			const result = convertUnitToFit({
+				number: 500,
+				unit: "mass",
+				from: "g",
+			});
+			expect(result.saturated).toBeUndefined();
+		});
+
+		it("does not set saturated when the value lands exactly at last-step", () => {
+			// 5 ton lands naturally at ton (no further suffix to try).
+			const result = convertUnitToFit({
+				number: 5_000_000,
+				unit: "mass",
+				from: "g",
+			});
+			expect(result).toEqual({
+				number: 5,
+				unit: "mass",
+				suffix: "ton",
+			});
+		});
+	});
+
+	describe("roundMethod option", () => {
+		it("defaults to bankersRound", () => {
+			// 2.5 kg → precision 0 → 2 (even)
+			expect(
+				convertUnitToFit({
+					number: 2.5,
+					unit: "mass",
+					from: "kg",
+					precision: 0,
+				}),
+			).toEqual({ number: 2, unit: "mass", suffix: "kg" });
+		});
+
+		it("switches to halfAwayFromZero when requested", () => {
+			expect(
+				convertUnitToFit({
+					number: 2.5,
+					unit: "mass",
+					from: "kg",
+					precision: 0,
+					roundMethod: "halfAwayFromZero",
+				}),
+			).toEqual({ number: 3, unit: "mass", suffix: "kg" });
 		});
 	});
 

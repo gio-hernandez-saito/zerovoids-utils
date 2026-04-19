@@ -1,16 +1,13 @@
-// Number utilities - Core rounding functions
-
-export type {
-	AffixConfig,
-	FormatMode,
-	FormatNumberOptions,
-	RoundMethod,
+// Number utilities — formatting
+export {
+	type AffixConfig,
+	type FormatMode,
+	type FormatNumberOptions,
+	formatNumber,
+	type RoundMethod,
+	type SignPosition,
 } from "./formatNumber.js";
-// Number utilities - Formatting
-export { formatNumber } from "./formatNumber.js";
-// Internal utilities (exported for advanced use)
-export { getSignificantDigitIndex } from "./getSignificantDigitIndex.js";
-export { roundHalfAwayFromZero } from "./roundHalfAwayFromZero.js";
-export { toBankersRound } from "./toBankersRound.js";
-// Export shared types
+// Number utilities — rounding
+export { bankersRound, halfAwayFromZero } from "./round.js";
+// Shared types
 export type { MaybeNumericInput, RoundOptions } from "./types.js";

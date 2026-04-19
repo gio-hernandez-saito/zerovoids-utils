@@ -1,101 +1,128 @@
-import { toBankersRound } from "../number/toBankersRound.js";
+import type { RoundMethod } from "../number/formatNumber.js";
+import { bankersRound, halfAwayFromZero } from "../number/round.js";
 import type { BaseUnit, ConvertedReturn, UnitMap } from "./types.js";
-import { BASE_UNIT_MAP } from "./types.js";
+import { BASE_UNIT_MAP } from "./unitMap.js";
 
-/**
- * Converts a given numerical value and its unit to the most fitting unit based on a defined unit mapping.
- * The output includes the converted number, the unit, and the appropriate suffix.
- *
- * @template U - The type of the unit to be converted (string literal, defaults to BaseUnit).
- *
- * @param {Object} option - The option object containing the input parameters.
- * @param {number} option.number - The numerical value to convert.
- * @param {UnitMap<U>} [option.unitMap] - A mapping of units and their related properties (optional, defaults to BASE_UNIT_MAP).
- * @param {U} option.unit - The target unit for conversion.
- * @param {string} [option.from] - The suffix of the original unit (optional; if not provided, defaults to the base index unit).
- * @param {boolean} [option.offset] - Determines whether to adjust the conversion range for selecting the most fitting unit.
- *                                    When `true`, the range increases by one additional step in the unit scale (gap + 1).
- * @return {Object} - The converted numerical value and its associated unit and suffix.
- * @return {number} return.number - The converted numerical value rounded appropriately.
- * @return {U} return.unit - The original target unit specified.
- * @return {string} return.suffix - The suffix corresponding to the most fitting converted unit.
- * @throws {Error} - Throws an error if an invalid target unit is provided.
- * @throws {Error} - Throws an error if an invalid `from` suffix is provided.
- *
- * @example
- * convertUnitToFit({ number: 5000, unit: 'mass', from: 'g' });
- * // { number: 5, unit: 'mass', suffix: 'kg' }
- *
- * convertUnitToFit({ number: 500, unit: 'mass', from: 'kg' });
- * // { number: 500, unit: 'mass', suffix: 'kg' }
- */
-export function convertUnitToFit<U extends string = BaseUnit>(option: {
+interface FitOption<U extends string> {
 	number: number;
 	unitMap?: UnitMap<U>;
 	unit: U;
 	from?: string;
-	offset?: boolean;
-}): ConvertedReturn<U> {
+	/**
+	 * Promotion-delay digits.
+	 * `0` (default) = promote at `10^gap`, `1` = promote at `10^(gap+1)`, …
+	 */
+	offset?: number;
+	/** Explicit promotion threshold — supersedes `offset` when set. */
+	threshold?: number;
+	/** Rounding precision for the result. Default `3`. */
+	precision?: number;
+	/** Rounding method applied to the result. Default `bankersRound`. */
+	roundMethod?: RoundMethod;
+}
+
+const DEMOTION_THRESHOLD = 1;
+
+function pickRounder(method: RoundMethod) {
+	return method === "halfAwayFromZero" ? halfAwayFromZero : bankersRound;
+}
+
+/**
+ * Converts a number to the most readable unit within its category.
+ *
+ * - **Promotion** (value → larger unit) when `|value| >= promotionThreshold`.
+ *   The threshold defaults to `10^gap` (e.g. 1000 for `mass`);
+ *   `offset` adds digits (`10^(gap+offset)`), `threshold` overrides directly.
+ * - **Demotion** (value → smaller unit) when `|value| < 1`.
+ *
+ * The result includes an optional `saturated` flag when the scan reaches the
+ * end of the category's suffix list without naturally landing in the
+ * `[1, promotionThreshold)` band:
+ * - `"max"` — value exceeded the largest suffix's range.
+ * - `"min"` — value stayed below `1` even at the smallest suffix.
+ *
+ * @example
+ * convertUnitToFit({ number: 5000, unit: "mass", from: "g" });
+ * // { number: 5, unit: "mass", suffix: "kg" }
+ *
+ * convertUnitToFit({ number: 9e15, unit: "mass", from: "g" });
+ * // { number: 9e6, unit: "mass", suffix: "ton", saturated: "max" }
+ */
+export function convertUnitToFit<U extends string = BaseUnit>(
+	option: FitOption<U>,
+): ConvertedReturn<U> {
 	const {
 		number,
 		unitMap = BASE_UNIT_MAP as UnitMap<U>,
 		unit,
 		from,
-		offset = false,
+		offset = 0,
+		threshold,
+		precision = 3,
+		roundMethod = "bankersRound",
 	} = option;
 
-	const targetUnitItem = unitMap[unit];
+	const spec = unitMap[unit];
+	if (!spec) throw new Error(`Invalid unit: ${unit}`);
 
-	if (!targetUnitItem) throw new Error(`Invalid unit: ${unit}`);
+	const { gap, suffices, baseIndex } = spec;
+	const round = pickRounder(roundMethod);
 
-	const { gap, suffices, baseIndex } = targetUnitItem;
-
-	const fromIndex = from ? suffices.indexOf(from) : baseIndex;
-
+	const fromIndex = from !== undefined ? suffices.indexOf(from) : baseIndex;
 	if (fromIndex === -1) throw new Error(`Invalid from suffix: ${from}`);
 
-	const absNumber = Math.abs(number);
+	const promotionThreshold = threshold ?? 10 ** (gap + offset);
+	const step = 10 ** gap;
 
-	const largerSuffices = suffices.slice(fromIndex + 1);
-	const smallerSuffices = suffices.slice(0, fromIndex);
-	const targetSuffices = absNumber < 1 ? smallerSuffices : largerSuffices;
-	const sign = absNumber < 1 ? 1 : -1;
-	const gapWithOffset = offset ? gap + 1 : gap;
-
-	if (
-		(1 <= absNumber && absNumber < 10 ** gapWithOffset) ||
-		!targetSuffices.length
-	) {
-		const suffix = suffices[fromIndex] as string;
-
+	// Zero / single-suffix category: stay.
+	if (number === 0 || suffices.length <= 1) {
 		return {
-			number: toBankersRound(number),
+			number: round(number, { precision }),
 			unit,
-			suffix,
+			suffix: suffices[fromIndex] as string,
 		};
 	}
 
-	for (let i = 0; i < targetSuffices.length; i += 1) {
-		const exponent = sign * (i + 1) * gap;
-		const scale = number * 10 ** exponent;
-		const rounded = toBankersRound(scale);
-		const absRounded = Math.abs(rounded);
+	const absNumber = Math.abs(number);
 
-		if (1 <= absRounded && absRounded < 10 ** gapWithOffset) {
-			const suffix = targetSuffices[i];
-			if (suffix !== undefined) {
-				return { number: rounded, unit, suffix };
-			}
-		}
+	// In-range: stay.
+	if (absNumber >= DEMOTION_THRESHOLD && absNumber < promotionThreshold) {
+		return {
+			number: round(number, { precision }),
+			unit,
+			suffix: suffices[fromIndex] as string,
+		};
 	}
 
-	const lastSuffix = targetSuffices[targetSuffices.length - 1] as string;
-	const totalSteps = targetSuffices.length;
-	const finalNumber = toBankersRound(number * 10 ** (sign * totalSteps * gap));
+	const direction: 1 | -1 = absNumber < DEMOTION_THRESHOLD ? -1 : 1;
+	let current = number;
+	let currentIndex = fromIndex;
+	let hitBoundary = false;
 
-	return {
-		number: finalNumber,
+	while (true) {
+		const nextIndex = currentIndex + direction;
+		if (nextIndex < 0 || nextIndex >= suffices.length) {
+			hitBoundary = true;
+			break;
+		}
+
+		current = direction === 1 ? current / step : current * step;
+		currentIndex = nextIndex;
+
+		const absCurrent = Math.abs(current);
+		if (direction === 1 && absCurrent < promotionThreshold) break;
+		if (direction === -1 && absCurrent >= DEMOTION_THRESHOLD) break;
+	}
+
+	const result: ConvertedReturn<U> = {
+		number: round(current, { precision }),
 		unit,
-		suffix: lastSuffix,
+		suffix: suffices[currentIndex] as string,
 	};
+
+	if (hitBoundary) {
+		result.saturated = direction === 1 ? "max" : "min";
+	}
+
+	return result;
 }

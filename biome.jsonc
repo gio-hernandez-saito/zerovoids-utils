@@ -16,7 +16,9 @@
 			"!pnpm-lock.yaml",
 			"!**/test-output",
 			"!**/*.gen.ts",
-			"!**/vite.config.ts.timestamp-*.mjs"
+			"!**/vite.config.ts.timestamp-*.mjs",
+			"!**/.omc/**",
+			"!**/coverage/**"
 		]
 	},
 	"formatter": {
